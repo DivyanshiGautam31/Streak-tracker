@@ -214,6 +214,10 @@
     const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
     return `${y}-${m}-${day}`;
   }
+  function parseLocalDate(dateStr){
+    const [y,m,d] = dateStr.split('-').map(Number);
+    return new Date(y, m-1, d);
+  }
   function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
   function todayDate(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
   const todayStr = toDateStr(todayDate());
@@ -294,7 +298,7 @@
         const checked = !!todayChecks[tk.id];
         const row = document.createElement('div');
         row.className = 'task';
-        const daysLeft = Math.round((new Date(tk.endDate) - t)/86400000) + 1;
+        const daysLeft = Math.round((parseLocalDate(tk.endDate) - t)/86400000) + 1;
         row.innerHTML = `
           <div class="check ${checked?'checked':''}" data-id="${tk.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="#1B2430" stroke-width="3.5" stroke-linecap="round"><path d="M4 12l5 5L20 6"/></svg>
@@ -351,8 +355,8 @@
     return !!(completions[dateStr] && completions[dateStr][task.id]);
   }
   function buildHistoryHtml(task){
-    const start = new Date(task.startDate);
-    const end = new Date(task.endDate);
+    const start = parseLocalDate(task.startDate);
+    const end = parseLocalDate(task.endDate);
     const today = todayDate();
     const lastVisible = end < today ? end : today;
     let done = 0, scheduled = 0;
