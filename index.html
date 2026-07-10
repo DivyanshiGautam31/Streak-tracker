@@ -124,9 +124,12 @@
   .history-stats b{color:var(--amber);}
   .history-grid{display:flex; flex-wrap:wrap; gap:3px;}
   .h-sq{width:10px; height:10px; border-radius:2.5px; background:var(--line);}
+  .h-sq.clickable{cursor:pointer; width:13px; height:13px; border-radius:3px;}
+  .h-sq.clickable:active{transform:scale(1.3);}
   .h-sq.done{background:var(--amber);}
   .h-sq.missed{background:rgba(209,104,78,0.55);}
   .h-sq.future{background:transparent; border:1px solid var(--line);}
+  .history-hint{font-size:11px; opacity:.45; margin-top:10px; font-style:italic;}
 
   .install-note{
     font-size:12px; line-height:1.6; opacity:.55; text-align:center; margin:26px 0 0; padding:0 8px;
@@ -214,6 +217,7 @@
   const LS_TASKS = 'streak_tasks_v1';
   const LS_COMPLETIONS = 'streak_completions_v1';
   const LS_META = 'streak_meta_v1';
+  const LS_MANUAL = 'streak_manual_log_v1';
 
   function load(key, fallback){
     try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -222,7 +226,8 @@
   function save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
   let tasks = load(LS_TASKS, []);            // [{id,name,startDate,endDate}]
-  let completions = load(LS_COMPLETIONS, {}); // {dateStr: {taskId:true}}
+  let completions = load(LS_COMPLETIONS, {}); // {dateStr: {taskId:true}} — real daily tick-offs, drives streak
+  let manualLog = load(LS_MANUAL, {});        // {dateStr: {taskId:true}} — personal history-fill only, never affects streak
   let meta = load(LS_META, {best:0});
 
   function toDateStr(d){
@@ -408,7 +413,10 @@
 
   const openPanels = new Set();
   function isTaskDoneOnDate(task, dateStr){
-    return !!(completions[dateStr] && completions[dateStr][task.id]);
+    // Combines real tick-offs (drives streak) with manual history-log marks (display only)
+    const real = !!(completions[dateStr] && completions[dateStr][task.id]);
+    const manual = !!(manualLog[dateStr] && manualLog[dateStr][task.id]);
+    return real || manual;
   }
   function buildHistoryHtml(task){
     const start = parseLocalDate(task.startDate);
@@ -425,8 +433,10 @@
       } else {
         scheduled++;
         const ok = isTaskDoneOnDate(task, dStr);
+        const isReal = !!(completions[dStr] && completions[dStr][task.id]);
         if(ok) done++;
-        squares += `<div class="h-sq ${ok?'done':'missed'}" title="${dStr} · ${ok?'done':'missed'}"></div>`;
+        const hint = isReal ? (ok?'done (real tick)':'missed') : (ok?'done (manual log) — tap to undo':'missed — tap to fill');
+        squares += `<div class="h-sq ${isReal?'':'clickable'} ${ok?'done':'missed'}" data-date="${dStr}" data-task="${task.id}" title="${dStr} · ${hint}"></div>`;
       }
       cursor = addDays(cursor, 1);
     }
@@ -437,7 +447,8 @@
         <span>Completion: <b>${pct}%</b></span>
         <span>Total span: <b>${Math.round((end-start)/86400000)+1}d</b></span>
       </div>
-      <div class="history-grid">${squares}</div>`;
+      <div class="history-grid">${squares}</div>
+      <div class="history-hint">Yeh sirf iss task ka personal record hai — square tap karke past din fill/unfill kar sakti ho, tumhara streak ya best streak isse change nahi hoga</div>`;
   }
   function togglePanel(task){
     const panel = document.getElementById('hist-' + task.id);
@@ -468,6 +479,18 @@
 
   // delete task
   document.getElementById('allTasksList').addEventListener('click', (e) => {
+    const sq = e.target.closest('.h-sq.clickable');
+    if(sq){
+      const dateStr = sq.dataset.date;
+      const taskId = sq.dataset.task;
+      const isReal = !!(completions[dateStr] && completions[dateStr][taskId]);
+      if(isReal) return; // genuine tick-offs can only be changed from the main daily list
+      if(!manualLog[dateStr]) manualLog[dateStr] = {};
+      manualLog[dateStr][taskId] = !manualLog[dateStr][taskId];
+      save(LS_MANUAL, manualLog);
+      render();
+      return;
+    }
     const btn = e.target.closest('.del-btn');
     if(!btn) return;
     const id = btn.dataset.id;
