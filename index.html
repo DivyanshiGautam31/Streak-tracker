@@ -63,8 +63,11 @@
   .card-sub{font-size:12.5px; color:var(--paper); opacity:.55; margin:0 0 14px; font-family:'JetBrains Mono',monospace;}
 
   /* Task rows */
-  .task{display:flex; align-items:center; gap:12px; padding:13px 4px; border-bottom:1px solid var(--line);}
+  .task{display:flex; align-items:center; gap:12px; padding:13px 4px; border-bottom:1px solid var(--line); background:var(--ink-2);}
   .task:last-child{border-bottom:none;}
+  .task.dragging{opacity:.55; box-shadow:0 8px 20px rgba(0,0,0,0.35); border-radius:10px; position:relative; z-index:5;}
+  .drag-handle{flex:none; width:26px; height:26px; display:flex; align-items:center; justify-content:center; color:var(--paper); opacity:.3; font-size:16px; cursor:grab; touch-action:none; user-select:none;}
+  .drag-handle:active{opacity:.7; cursor:grabbing;}
   .check{
     width:25px; height:25px; border-radius:8px; border:2px solid var(--amber-dim);
     flex:none; display:flex; align-items:center; justify-content:center; cursor:pointer;
@@ -227,7 +230,8 @@
   }
   function save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
-  let tasks = load(LS_TASKS, []);            // [{id,name,startDate,endDate}]
+  let tasks = load(LS_TASKS, []);            // [{id,name,startDate,endDate,order}]
+  tasks.forEach((t,i) => { if(typeof t.order !== 'number') t.order = i; });
   let completions = load(LS_COMPLETIONS, {}); // {dateStr: {taskId:true}} — real daily tick-offs, drives streak
   let manualLog = load(LS_MANUAL, {});        // {dateStr: {taskId:true}} — personal history-fill only, never affects streak
   let meta = load(LS_META, {best:0});
@@ -245,7 +249,8 @@
   const todayStr = toDateStr(todayDate());
 
   function activeTasksForDate(dateStr){
-    return tasks.filter(t => t.startDate <= dateStr && dateStr <= t.endDate);
+    return tasks.filter(t => t.startDate <= dateStr && dateStr <= t.endDate)
+                .sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
   }
   function isDayComplete(dateStr){
     const active = activeTasksForDate(dateStr);
@@ -320,8 +325,10 @@
         const checked = !!todayChecks[tk.id];
         const row = document.createElement('div');
         row.className = 'task';
+        row.dataset.id = tk.id;
         const daysLeft = Math.round((parseLocalDate(tk.endDate) - t)/86400000) + 1;
         row.innerHTML = `
+          <div class="drag-handle" data-drag="${tk.id}">⠿</div>
           <div class="check ${checked?'checked':''}" data-id="${tk.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="#1B2430" stroke-width="3.5" stroke-linecap="round"><path d="M4 12l5 5L20 6"/></svg>
           </div>
@@ -493,6 +500,52 @@
     render();
   });
 
+  // drag to reorder today's tasks
+  let dragState = null;
+  document.getElementById('taskList').addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if(!handle) return;
+    const row = handle.closest('.task');
+    if(!row) return;
+    e.preventDefault();
+    dragState = { row };
+    row.classList.add('dragging');
+    try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  document.addEventListener('pointermove', (e) => {
+    if(!dragState) return;
+    const listEl = document.getElementById('taskList');
+    const rows = Array.from(listEl.querySelectorAll('.task'));
+    const y = e.clientY;
+    for(const r of rows){
+      if(r === dragState.row) continue;
+      const rect = r.getBoundingClientRect();
+      const mid = rect.top + rect.height/2;
+      if(y < mid && r.previousElementSibling !== dragState.row){
+        listEl.insertBefore(dragState.row, r);
+        break;
+      } else if(y >= mid && r.nextElementSibling !== dragState.row){
+        listEl.insertBefore(dragState.row, r.nextSibling);
+        break;
+      }
+    }
+  });
+  function endDrag(){
+    if(!dragState) return;
+    dragState.row.classList.remove('dragging');
+    const listEl = document.getElementById('taskList');
+    const rows = Array.from(listEl.querySelectorAll('.task'));
+    rows.forEach((r, idx) => {
+      const t = tasks.find(tk => tk.id === r.dataset.id);
+      if(t) t.order = idx;
+    });
+    save(LS_TASKS, tasks);
+    dragState = null;
+    render();
+  }
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+
   // delete task
   document.getElementById('allTasksList').addEventListener('click', (e) => {
     const sq = e.target.closest('.h-sq.clickable');
@@ -547,7 +600,8 @@
       id: 't' + Date.now() + Math.random().toString(36).slice(2,7),
       name,
       startDate: toDateStr(start),
-      endDate: toDateStr(end)
+      endDate: toDateStr(end),
+      order: Date.now()
     });
     save(LS_TASKS, tasks);
     input.value = '';
