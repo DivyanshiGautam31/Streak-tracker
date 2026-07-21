@@ -76,11 +76,6 @@
     color:var(--amber); opacity:.75; padding:14px 4px 8px; font-weight:600;
     border-top:1px solid var(--line);
   }
-  .day-section-header{
-    font-family:'Fraunces',serif; font-size:16px; font-weight:700; color:var(--paper);
-    padding:16px 4px 2px; margin-top:6px;
-  }
-  .day-section-block:first-child .day-section-header{margin-top:0;}
   .priority-group:first-child .priority-header{border-top:none; padding-top:2px;}
   .priority-empty{font-size:12.5px; opacity:.35; padding:4px 4px 10px; font-style:italic;}
   .prio-badge{
@@ -141,10 +136,6 @@
   .all-task-info b{font-weight:600;}
   .all-task-info div{font-family:'JetBrains Mono',monospace; font-size:11px; opacity:.45; margin-top:2px;}
   .all-task-right{display:flex; align-items:center; gap:10px;}
-  .section-select{
-    background:var(--ink); color:var(--paper); border:1px solid var(--line); border-radius:7px;
-    font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:5px 4px; flex:none; max-width:88px;
-  }
   .expand-arrow{font-size:11px; opacity:.4; transition:.15s;}
   .expand-arrow.open{transform:rotate(180deg);}
 
@@ -159,7 +150,6 @@
   .h-sq.done{background:var(--amber);}
   .h-sq.missed{background:rgba(209,104,78,0.55);}
   .h-sq.future{background:transparent; border:1px solid var(--line);}
-  .h-sq.inactive{background:repeating-linear-gradient(45deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 2px, transparent 2px, transparent 4px);}
   .history-hint{font-size:11px; opacity:.45; margin-top:10px; font-style:italic;}
 
   .install-note{
@@ -224,19 +214,6 @@
       <input type="text" inputmode="numeric" id="customDaysInput" placeholder="e.g. 150">
     </div>
     <div class="field">
-      <label>Kaunse din dikhe (section)</label>
-      <div class="duration-row" id="dayRow">
-        <div class="dur-chip active" data-day="everyday">Everyday</div>
-        <div class="dur-chip" data-day="sun">Sunday</div>
-        <div class="dur-chip" data-day="mon">Monday</div>
-        <div class="dur-chip" data-day="tue">Tuesday</div>
-        <div class="dur-chip" data-day="wed">Wednesday</div>
-        <div class="dur-chip" data-day="thu">Thursday</div>
-        <div class="dur-chip" data-day="fri">Friday</div>
-        <div class="dur-chip" data-day="sat">Saturday</div>
-      </div>
-    </div>
-    <div class="field">
       <label>Priority</label>
       <div class="duration-row" id="priorityRow">
         <div class="dur-chip active" data-p="1">Priority 1</div>
@@ -276,24 +253,8 @@
   }
   function save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
-  const DAY_SECTIONS = [
-    { id:'everyday', name:'Everyday' },
-    { id:'sun', name:'Sunday' },
-    { id:'mon', name:'Monday' },
-    { id:'tue', name:'Tuesday' },
-    { id:'wed', name:'Wednesday' },
-    { id:'thu', name:'Thursday' },
-    { id:'fri', name:'Friday' },
-    { id:'sat', name:'Saturday' }
-  ];
-  const DOW_TO_DAYID = ['sun','mon','tue','wed','thu','fri','sat'];
-
-  let tasks = load(LS_TASKS, []);            // [{id,name,startDate,endDate,order,dayId,priority}]
-  tasks.forEach((t,i) => {
-    if(typeof t.order !== 'number') t.order = i;
-    if(!t.dayId || !DAY_SECTIONS.find(d => d.id === t.dayId)) t.dayId = 'everyday';
-    if(t.priority !== 1 && t.priority !== 2) t.priority = 1;
-  });
+  let tasks = load(LS_TASKS, []);            // [{id,name,startDate,endDate,order}]
+  tasks.forEach((t,i) => { if(typeof t.order !== 'number') t.order = i; if(t.priority !== 1 && t.priority !== 2) t.priority = 1; });
   let completions = load(LS_COMPLETIONS, {}); // {dateStr: {taskId:true}} — real daily tick-offs, drives streak
   let manualLog = load(LS_MANUAL, {});        // {dateStr: {taskId:true}} — personal history-fill only, never affects streak
   let meta = load(LS_META, {best:0});
@@ -311,9 +272,7 @@
   const todayStr = toDateStr(todayDate());
 
   function activeTasksForDate(dateStr){
-    const dow = parseLocalDate(dateStr).getDay(); // 0=Sun..6=Sat
-    const dayId = DOW_TO_DAYID[dow];
-    return tasks.filter(t => t.startDate <= dateStr && dateStr <= t.endDate && (t.dayId === 'everyday' || t.dayId === dayId))
+    return tasks.filter(t => t.startDate <= dateStr && dateStr <= t.endDate)
                 .sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
   }
   function isDayComplete(dateStr){
@@ -386,7 +345,8 @@
         bannerSlot.innerHTML = `<div class="done-banner">🔥 Aaj ka pura streak ban gaya!</div>`;
       }
 
-      function buildPriorityGroup(group, prio, label){
+      function buildGroup(prio, label){
+        const group = activeToday.filter(tk => (tk.priority || 1) === prio);
         const wrap = document.createElement('div');
         wrap.className = 'priority-group';
         const header = document.createElement('div');
@@ -427,11 +387,11 @@
         return wrap;
       }
 
-      listEl.appendChild(buildPriorityGroup(activeToday.filter(tk => (tk.priority||1) === 1), 1, 'Priority 1'));
-      listEl.appendChild(buildPriorityGroup(activeToday.filter(tk => (tk.priority||1) === 2), 2, 'Priority 2'));
+      listEl.appendChild(buildGroup(1, 'Priority 1'));
+      listEl.appendChild(buildGroup(2, 'Priority 2'));
     }
 
-    // all tasks card — grouped by day-section, then priority
+    // all tasks card
     const allCard = document.getElementById('allTasksCard');
     const allList = document.getElementById('allTasksList');
     if(tasks.length === 0){
@@ -439,59 +399,29 @@
     } else {
       allCard.style.display = '';
       allList.innerHTML = '';
-
-      function buildAllTaskRow(tk){
+      [...tasks].sort((a,b)=> a.endDate < b.endDate ? -1 : 1).forEach(tk => {
         const isPast = tk.endDate < todayStr;
-        const wrap = document.createElement('div');
         const row = document.createElement('div');
         row.className = 'all-task-row';
-        const dayOptions = DAY_SECTIONS.map(d => `<option value="${d.id}" ${d.id===tk.dayId?'selected':''}>${escapeHtml(d.name)}</option>`).join('');
         row.innerHTML = `
           <div class="all-task-info">
             <b style="${isPast?'opacity:.4;text-decoration:line-through;':''}">${escapeHtml(tk.name)}</b>
             <div>${tk.startDate} → ${tk.endDate}${isPast?' · khatam':''}</div>
           </div>
           <div class="all-task-right">
-            <select class="section-select" data-id="${tk.id}" title="Section badlo">${dayOptions}</select>
             <span class="expand-arrow${openPanels.has(tk.id)?' open':''}" data-arrow="${tk.id}">▾</span>
             <button class="del-btn" data-id="${tk.id}">✕</button>
           </div>`;
-        wrap.appendChild(row);
+        allList.appendChild(row);
 
         const panel = document.createElement('div');
         panel.className = 'history-panel' + (openPanels.has(tk.id) ? ' open' : '');
         panel.id = 'hist-' + tk.id;
         if(openPanels.has(tk.id)) panel.innerHTML = buildHistoryHtml(tk);
-        wrap.appendChild(panel);
+        allList.appendChild(panel);
 
         row.querySelector('.all-task-info').addEventListener('click', () => togglePanel(tk));
         row.querySelector('.expand-arrow').addEventListener('click', () => togglePanel(tk));
-        row.querySelector('.section-select').addEventListener('click', (e) => e.stopPropagation());
-        row.querySelector('.section-select').addEventListener('change', (e) => {
-          tk.dayId = e.target.value;
-          save(LS_TASKS, tasks);
-          render();
-        });
-        return wrap;
-      }
-
-      DAY_SECTIONS.forEach(daySec => {
-        const dayTasks = tasks.filter(tk => tk.dayId === daySec.id);
-        if(dayTasks.length === 0) return;
-        const dHeader = document.createElement('div');
-        dHeader.className = 'day-section-header';
-        dHeader.textContent = daySec.name;
-        allList.appendChild(dHeader);
-
-        [1,2].forEach(prio => {
-          const group = dayTasks.filter(tk => (tk.priority||1) === prio).sort((a,b)=> a.endDate < b.endDate ? -1 : 1);
-          if(group.length === 0) return;
-          const pHeader = document.createElement('div');
-          pHeader.className = 'priority-header';
-          pHeader.textContent = 'Priority ' + prio;
-          allList.appendChild(pHeader);
-          group.forEach(tk => allList.appendChild(buildAllTaskRow(tk)));
-        });
       });
     }
   }
@@ -558,11 +488,7 @@
     let cursor = new Date(start);
     while(cursor <= end){
       const dStr = toDateStr(cursor);
-      const dow = cursor.getDay();
-      const appliesToday = task.dayId === 'everyday' || DOW_TO_DAYID[dow] === task.dayId;
-      if(!appliesToday){
-        squares += `<div class="h-sq inactive" title="${dStr} · not scheduled"></div>`;
-      } else if(cursor > today){
+      if(cursor > today){
         squares += `<div class="h-sq future" title="${dStr} · upcoming"></div>`;
       } else {
         scheduled++;
@@ -677,7 +603,6 @@
   // duration chips
   let selectedDuration = 14;
   let selectedPriority = 1;
-  let selectedDayId = 'everyday';
   const customInput = document.getElementById('customDaysInput');
   document.getElementById('durationRow').addEventListener('click', (e) => {
     const chip = e.target.closest('.dur-chip');
@@ -693,13 +618,6 @@
       document.querySelectorAll('#durationRow .dur-chip').forEach(c => c.classList.remove('active'));
       selectedDuration = v;
     }
-  });
-  document.getElementById('dayRow').addEventListener('click', (e) => {
-    const chip = e.target.closest('.dur-chip');
-    if(!chip) return;
-    document.querySelectorAll('#dayRow .dur-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    selectedDayId = chip.dataset.day;
   });
   document.getElementById('priorityRow').addEventListener('click', (e) => {
     const chip = e.target.closest('.dur-chip');
@@ -724,8 +642,7 @@
       startDate: toDateStr(start),
       endDate: toDateStr(end),
       order: Date.now(),
-      priority: selectedPriority,
-      dayId: selectedDayId
+      priority: selectedPriority
     });
     save(LS_TASKS, tasks);
     input.value = '';
